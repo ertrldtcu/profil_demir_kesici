@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#245cc7">
+    <title>Profil Kesim Planlayıcı</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <h1>Profil Kesim Planlayıcı</h1>
+        <p>Eldeki profilleri ve ihtiyaç duyulan parçaları girin.</p>
+      </div>
+    </header>
+
+    <main class="app-shell">
+      <section class="input-grid">
+        <form class="panel" id="stockForm">
+          <h2>Eldeki Profiller</h2>
+          <div class="entry-row">
+            <label>
+              <span>Adet</span>
+              <input id="stockQty" inputmode="numeric" type="number" min="1" step="1" value="1">
+            </label>
+            <div class="step-pair">
+              <button type="button" data-step-for="stockQty" data-step="-1">-</button>
+              <button type="button" data-step-for="stockQty" data-step="1">+</button>
+            </div>
+            <label class="length-field">
+              <span>Uzunluk</span>
+              <input id="stockLength" inputmode="decimal" type="text" value="1">
+            </label>
+            <div class="step-pair">
+              <button type="button" data-step-for="stockLength" data-step="-0.5">-</button>
+              <button type="button" data-step-for="stockLength" data-step="0.5">+</button>
+            </div>
+            <label>
+              <span>Birim</span>
+              <select id="stockUnit">
+                <option value="m">metre</option>
+                <option value="cm">cm</option>
+              </select>
+            </label>
+            <button class="add-button" type="submit">Ekle</button>
+          </div>
+          <div class="item-list" id="stockList" aria-live="polite"></div>
+        </form>
+
+        <form class="panel" id="demandForm">
+          <h2>İstenen Kesimler</h2>
+          <div class="entry-row">
+            <label>
+              <span>Adet</span>
+              <input id="demandQty" inputmode="numeric" type="number" min="1" step="1" value="1">
+            </label>
+            <div class="step-pair">
+              <button type="button" data-step-for="demandQty" data-step="-1">-</button>
+              <button type="button" data-step-for="demandQty" data-step="1">+</button>
+            </div>
+            <label class="length-field">
+              <span>Uzunluk</span>
+              <input id="demandLength" inputmode="decimal" type="text" value="1">
+            </label>
+            <div class="step-pair">
+              <button type="button" data-step-for="demandLength" data-step="-0.5">-</button>
+              <button type="button" data-step-for="demandLength" data-step="0.5">+</button>
+            </div>
+            <label>
+              <span>Birim</span>
+              <select id="demandUnit">
+                <option value="m">metre</option>
+                <option value="cm">cm</option>
+              </select>
+            </label>
+            <button class="add-button" type="submit">Ekle</button>
+          </div>
+          <div class="item-list" id="demandList" aria-live="polite"></div>
+        </form>
+      </section>
+
+      <section class="result-panel">
+        <div class="result-head">
+          <h2>Kesim Planı</h2>
+          <button id="calculateButton" class="primary-button" type="button">Hesapla</button>
+        </div>
+        <div id="message" class="message" hidden></div>
+        <div id="results" class="results"></div>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
