@@ -1,4 +1,4 @@
-const CACHE_NAME = "profil-kesim-v5";
+const CACHE_NAME = "profil-kesim-v6";
 const ASSETS = [
   "./",
   "index.html",

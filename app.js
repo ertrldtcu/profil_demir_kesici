@@ -168,9 +168,110 @@ function makeCutPlan(stocks, demands, mode = "waste") {
   });
 
   return {
-    plans: plans.sort((a, b) => b.stockLengthMm - a.stockLengthMm || wasteOf(b) - wasteOf(a)),
+    plans: improvePlans(
+      plans.sort((a, b) => b.stockLengthMm - a.stockLengthMm || wasteOf(b) - wasteOf(a)),
+      unusedStocks,
+    ),
     missing,
   };
+}
+
+function improvePlans(plans, unusedStocks) {
+  let improvedPlans = shrinkOversizedProfiles(plans, unusedStocks);
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+    const sourceOrder = improvedPlans
+      .map((plan, index) => ({ index, waste: wasteOf(plan), used: usedOf(plan) }))
+      .sort((a, b) => b.waste - a.waste || a.used - b.used);
+
+    for (const source of sourceOrder) {
+      const result = tryEliminatePlan(improvedPlans, source.index);
+      if (result) {
+        unusedStocks.push(improvedPlans[source.index].stockLengthMm);
+        improvedPlans = shrinkOversizedProfiles(result, unusedStocks);
+        changed = true;
+        break;
+      }
+    }
+  }
+
+  recolorPlans(improvedPlans);
+  return improvedPlans.sort((a, b) => b.stockLengthMm - a.stockLengthMm || wasteOf(b) - wasteOf(a));
+}
+
+function shrinkOversizedProfiles(plans, unusedStocks) {
+  plans.forEach((plan) => {
+    const used = usedOf(plan);
+    const maxPiece = Math.max(...plan.pieces.map((piece) => piece.lengthMm));
+    const replacementIndex = unusedStocks
+      .map((length, index) => ({ length, index }))
+      .filter((stock) => stock.length < plan.stockLengthMm && stock.length >= used && stock.length >= maxPiece)
+      .sort((a, b) => a.length - b.length)[0]?.index;
+
+    if (replacementIndex !== undefined) {
+      unusedStocks.push(plan.stockLengthMm);
+      plan.stockLengthMm = unusedStocks.splice(replacementIndex, 1)[0];
+    }
+  });
+
+  return plans;
+}
+
+function tryEliminatePlan(plans, sourceIndex) {
+  if (plans.length <= 1) return null;
+
+  const source = plans[sourceIndex];
+  const targets = plans.filter((_, index) => index !== sourceIndex).map((plan) => ({
+    stockLengthMm: plan.stockLengthMm,
+    pieces: plan.pieces.map((piece) => ({ ...piece })),
+  }));
+  const capacities = targets.map((plan) => plan.stockLengthMm - usedOf(plan));
+  const pieces = source.pieces.map((piece) => piece.lengthMm).sort((a, b) => b - a);
+  const assignments = Array.from({ length: targets.length }, () => []);
+
+  if (!placePiecesIntoCapacities(pieces, capacities, assignments, 0)) return null;
+
+  assignments.forEach((lengths, targetIndex) => {
+    lengths.forEach((lengthMm) => {
+      targets[targetIndex].pieces.push({ lengthMm, color: COLORS[0], cut: false });
+    });
+  });
+
+  return targets;
+}
+
+function placePiecesIntoCapacities(pieces, capacities, assignments, pieceIndex) {
+  if (pieceIndex >= pieces.length) return true;
+
+  const piece = pieces[pieceIndex];
+  const triedCapacities = new Set();
+
+  for (let index = 0; index < capacities.length; index += 1) {
+    if (capacities[index] < piece || triedCapacities.has(capacities[index])) continue;
+
+    triedCapacities.add(capacities[index]);
+    capacities[index] -= piece;
+    assignments[index].push(piece);
+
+    if (placePiecesIntoCapacities(pieces, capacities, assignments, pieceIndex + 1)) return true;
+
+    assignments[index].pop();
+    capacities[index] += piece;
+  }
+
+  return false;
+}
+
+function recolorPlans(plans) {
+  plans.forEach((plan) => {
+    plan.pieces.sort((a, b) => b.lengthMm - a.lengthMm);
+    plan.pieces.forEach((piece, index) => {
+      piece.color = COLORS[index % COLORS.length];
+      piece.cut = false;
+    });
+  });
 }
 
 function hasRemainingDemand(remaining) {
@@ -243,7 +344,8 @@ function renderResults(plans, missing) {
 
   if (missing.length) {
     const missingText = formatCounts(countLengths(missing));
-    showMessage(`Karşılanamayan parçalar: ${missingText}`);
+    const missingTotal = missing.reduce((total, length) => total + length, 0);
+    showMessage(`Karşılanamayan parçalar: ${missingText} | Eksik toplam: ${formatLength(missingTotal)}`);
   } else {
     hideMessage();
   }
@@ -275,7 +377,7 @@ function createPlanCard(plan, index, maxLength) {
 
   const pieces = document.createElement("div");
   pieces.className = "plan-pieces";
-  pieces.textContent = `Kes: ${plan.pieces.map((piece) => formatLength(piece.lengthMm)).join(" + ")}`;
+  pieces.textContent = `Kes: ${formatPieces(plan.pieces)}`;
 
   const bar = document.createElement("div");
   bar.className = "bar";
@@ -366,12 +468,13 @@ function updatePlanText(plans, missing) {
 
   if (missing.length) {
     const counts = countLengths(missing);
-    lines.push(`Karşılanamayan: ${formatCounts(counts)}`);
+    const missingTotal = missing.reduce((total, length) => total + length, 0);
+    lines.push(`Karşılanamayan: ${formatCounts(counts)} | Eksik toplam: ${formatLength(missingTotal)}`);
   }
 
   lines.push("");
   plans.forEach((plan, index) => {
-    const pieces = plan.pieces.map((piece) => formatLength(piece.lengthMm)).join(" + ");
+    const pieces = formatPieces(plan.pieces);
     lines.push(`${index + 1}. ${formatLength(plan.stockLengthMm)} profil: ${pieces} | Fire: ${formatLength(wasteOf(plan))}`);
   });
 
@@ -388,8 +491,12 @@ function countLengths(lengths) {
 function formatCounts(counts) {
   return [...counts.entries()]
     .sort((a, b) => b[0] - a[0])
-    .map(([length, count]) => `${count} adet ${formatLength(length)}`)
+    .map(([length, count]) => `${formatLength(length)} x ${count}`)
     .join(", ");
+}
+
+function formatPieces(pieces) {
+  return formatCounts(countLengths(pieces.map((piece) => piece.lengthMm)));
 }
 
 function fillSampleData() {
