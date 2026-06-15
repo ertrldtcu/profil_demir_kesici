@@ -11,6 +11,7 @@ const COLORS = [
 
 const stockEntries = [];
 const demandEntries = [];
+let lastPlanText = "";
 
 const $ = (id) => document.getElementById(id);
 
@@ -66,6 +67,30 @@ function renderList(container, entries) {
     const text = document.createElement("div");
     text.textContent = `${entry.quantity} adet x ${formatLength(entry.lengthMm)}`;
 
+    const decrease = document.createElement("button");
+    decrease.className = "inline-step";
+    decrease.type = "button";
+    decrease.textContent = "-";
+    decrease.disabled = entry.quantity <= 1;
+    decrease.setAttribute("aria-label", "Adet azalt");
+    decrease.addEventListener("click", () => {
+      if (entry.quantity <= 1) return;
+      entry.quantity -= 1;
+      renderLists();
+      clearResults();
+    });
+
+    const increase = document.createElement("button");
+    increase.className = "inline-step";
+    increase.type = "button";
+    increase.textContent = "+";
+    increase.setAttribute("aria-label", "Adet artır");
+    increase.addEventListener("click", () => {
+      entry.quantity += 1;
+      renderLists();
+      clearResults();
+    });
+
     const button = document.createElement("button");
     button.className = "delete-button";
     button.type = "button";
@@ -77,12 +102,12 @@ function renderList(container, entries) {
       clearResults();
     });
 
-    row.append(text, button);
+    row.append(text, decrease, increase, button);
     container.append(row);
   });
 }
 
-function makeCutPlan(stocks, demands) {
+function makeCutPlan(stocks, demands, mode = "waste") {
   const stockLengths = [];
   const remaining = new Map();
 
@@ -109,7 +134,10 @@ function makeCutPlan(stocks, demands) {
       if (!used) return;
 
       const waste = stockLength - used;
-      if (waste < bestWaste || (waste === bestWaste && used > bestUsed)) {
+      const betterForWaste = waste < bestWaste || (waste === bestWaste && used > bestUsed);
+      const betterForProfiles = used > bestUsed || (used === bestUsed && waste < bestWaste);
+
+      if ((mode === "profiles" && betterForProfiles) || (mode !== "profiles" && betterForWaste)) {
         bestIndex = index;
         bestCombo = combo;
         bestWaste = waste;
@@ -185,21 +213,18 @@ function calculate() {
     return;
   }
 
-  const { plans, missing } = makeCutPlan(stockEntries, demandEntries);
+  const mode = document.querySelector('input[name="optMode"]:checked')?.value || "waste";
+  const { plans, missing } = makeCutPlan(stockEntries, demandEntries, mode);
   renderResults(plans, missing);
 }
 
 function renderResults(plans, missing) {
   const results = $("results");
   results.innerHTML = "";
+  results.classList.remove("empty-state");
 
   if (missing.length) {
-    const counts = new Map();
-    missing.forEach((length) => counts.set(length, (counts.get(length) || 0) + 1));
-    const missingText = [...counts.entries()]
-      .sort((a, b) => b[0] - a[0])
-      .map(([length, count]) => `${count} adet ${formatLength(length)}`)
-      .join(", ");
+    const missingText = formatCounts(countLengths(missing));
     showMessage(`Karşılanamayan parçalar: ${missingText}`);
   } else {
     hideMessage();
@@ -207,16 +232,15 @@ function renderResults(plans, missing) {
 
   if (!plans.length) {
     results.innerHTML = `<div class="summary">Uygun kesim planı bulunamadı.</div>`;
+    renderSummary([], missing);
+    updatePlanText([], missing);
     return;
   }
 
-  const totalWaste = plans.reduce((total, plan) => total + wasteOf(plan), 0);
   const maxLength = Math.max(...plans.map((plan) => plan.stockLengthMm));
 
-  const summary = document.createElement("div");
-  summary.className = "summary";
-  summary.textContent = `Kullanılacak profil: ${plans.length} adet | Toplam fire: ${formatLength(totalWaste)}`;
-  results.append(summary);
+  renderSummary(plans, missing);
+  updatePlanText(plans, missing);
 
   plans.forEach((plan, index) => {
     results.append(createPlanCard(plan, index + 1, maxLength));
@@ -277,8 +301,120 @@ function hideMessage() {
 }
 
 function clearResults() {
-  $("results").innerHTML = "";
+  $("summary").className = "summary-grid empty-state";
+  $("summary").textContent = "Henüz hesaplama yapılmadı.";
+  $("results").className = "results empty-state";
+  $("results").textContent = "Hesapla butonuna basınca kesim şeması burada görünecek.";
+  $("copyButton").disabled = true;
+  lastPlanText = "";
   hideMessage();
+}
+
+function renderSummary(plans, missing) {
+  const summary = $("summary");
+  summary.className = "summary-grid";
+  summary.innerHTML = "";
+
+  const totalStock = stockEntries.reduce((total, entry) => total + entry.quantity * entry.lengthMm, 0);
+  const totalDemand = demandEntries.reduce((total, entry) => total + entry.quantity * entry.lengthMm, 0);
+  const plannedStock = plans.reduce((total, plan) => total + plan.stockLengthMm, 0);
+  const totalUsed = plans.reduce((total, plan) => total + usedOf(plan), 0);
+  const totalWaste = plans.reduce((total, plan) => total + wasteOf(plan), 0);
+  const missingTotal = missing.reduce((total, length) => total + length, 0);
+  const wastePercent = plannedStock ? `${((totalWaste / plannedStock) * 100).toFixed(1)}%` : "0%";
+
+  [
+    ["Eldeki malzeme", formatLength(totalStock)],
+    ["İstenen toplam", formatLength(totalDemand)],
+    ["Kullanılan profil", `${plans.length} adet`],
+    ["Plana giren malzeme", formatLength(plannedStock)],
+    ["Kesilen toplam", formatLength(totalUsed)],
+    ["Toplam fire", `${formatLength(totalWaste)} (${wastePercent})`],
+    ["Karşılanamayan", missing.length ? formatLength(missingTotal) : "Yok"],
+  ].forEach(([label, value]) => {
+    const card = document.createElement("div");
+    card.className = "summary-card";
+    card.innerHTML = `<span>${label}</span><strong>${value}</strong>`;
+    summary.append(card);
+  });
+}
+
+function updatePlanText(plans, missing) {
+  const lines = ["Profil Kesim Planı", ""];
+
+  const totalWaste = plans.reduce((total, plan) => total + wasteOf(plan), 0);
+  lines.push(`Kullanılacak profil: ${plans.length} adet`);
+  lines.push(`Toplam fire: ${formatLength(totalWaste)}`);
+
+  if (missing.length) {
+    const counts = countLengths(missing);
+    lines.push(`Karşılanamayan: ${formatCounts(counts)}`);
+  }
+
+  lines.push("");
+  plans.forEach((plan, index) => {
+    const pieces = plan.pieces.map((piece) => formatLength(piece.lengthMm)).join(" + ");
+    lines.push(`${index + 1}. ${formatLength(plan.stockLengthMm)} profil: ${pieces} | Fire: ${formatLength(wasteOf(plan))}`);
+  });
+
+  lastPlanText = lines.join("\n").trim();
+  $("copyButton").disabled = !lastPlanText;
+}
+
+function countLengths(lengths) {
+  const counts = new Map();
+  lengths.forEach((length) => counts.set(length, (counts.get(length) || 0) + 1));
+  return counts;
+}
+
+function formatCounts(counts) {
+  return [...counts.entries()]
+    .sort((a, b) => b[0] - a[0])
+    .map(([length, count]) => `${count} adet ${formatLength(length)}`)
+    .join(", ");
+}
+
+function fillSampleData() {
+  stockEntries.splice(
+    0,
+    stockEntries.length,
+    { quantity: 4, lengthMm: 6000 },
+    { quantity: 3, lengthMm: 4000 },
+    { quantity: 4, lengthMm: 3000 },
+    { quantity: 2, lengthMm: 2500 },
+  );
+
+  demandEntries.splice(
+    0,
+    demandEntries.length,
+    { quantity: 5, lengthMm: 2750 },
+    { quantity: 7, lengthMm: 2000 },
+    { quantity: 6, lengthMm: 1500 },
+    { quantity: 4, lengthMm: 1200 },
+    { quantity: 8, lengthMm: 850 },
+    { quantity: 3, lengthMm: 625 },
+  );
+
+  renderLists();
+  clearResults();
+  showMessage("Orta karmaşıklıkta örnek veriler eklendi.");
+}
+
+async function copyPlan() {
+  if (!lastPlanText) return;
+
+  try {
+    await navigator.clipboard.writeText(lastPlanText);
+    showMessage("Kesim planı kopyalandı.");
+  } catch {
+    const area = document.createElement("textarea");
+    area.value = lastPlanText;
+    document.body.append(area);
+    area.select();
+    document.execCommand("copy");
+    area.remove();
+    showMessage("Kesim planı kopyalandı.");
+  }
 }
 
 function stepInput(input, amount) {
@@ -302,6 +438,12 @@ function bindEvents() {
   });
 
   $("calculateButton").addEventListener("click", calculate);
+  $("sampleButton").addEventListener("click", fillSampleData);
+  $("copyButton").addEventListener("click", copyPlan);
+
+  document.querySelectorAll('input[name="optMode"]').forEach((input) => {
+    input.addEventListener("change", clearResults);
+  });
 
   document.querySelectorAll("[data-step-for]").forEach((button) => {
     button.addEventListener("click", () => {

@@ -15,6 +15,7 @@
         <h1>Profil Kesim Planlayıcı</h1>
         <p>Eldeki profilleri ve ihtiyaç duyulan parçaları girin.</p>
       </div>
+      <button id="sampleButton" class="ghost-button" type="button">Örnek Doldur</button>
     </header>
 
     <main class="app-shell">
@@ -84,13 +85,36 @@
         </form>
       </section>
 
-      <section class="result-panel">
+      <section class="result-panel controls-panel">
         <div class="result-head">
-          <h2>Kesim Planı</h2>
+          <h2>Hesaplama</h2>
+          <fieldset class="mode-picker">
+            <legend>Öncelik</legend>
+            <label>
+              <input type="radio" name="optMode" value="waste" checked>
+              <span>En az fire</span>
+            </label>
+            <label>
+              <input type="radio" name="optMode" value="profiles">
+              <span>En az profil</span>
+            </label>
+          </fieldset>
           <button id="calculateButton" class="primary-button" type="button">Hesapla</button>
         </div>
         <div id="message" class="message" hidden></div>
-        <div id="results" class="results"></div>
+      </section>
+
+      <section class="result-panel">
+        <h2>Toplam Özet</h2>
+        <div id="summary" class="summary-grid empty-state">Henüz hesaplama yapılmadı.</div>
+      </section>
+
+      <section class="result-panel">
+        <div class="result-head">
+          <h2>Tek Tek Kesim Şeması</h2>
+          <button id="copyButton" class="ghost-button" type="button" disabled>Planı Kopyala</button>
+        </div>
+        <div id="results" class="results empty-state">Hesapla butonuna basınca kesim şeması burada görünecek.</div>
       </section>
     </main>
 
