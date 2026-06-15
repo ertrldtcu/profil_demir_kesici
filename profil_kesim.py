@@ -1,9 +1,10 @@
 import sys
 from dataclasses import dataclass, field
 
-from PyQt6.QtCore import Qt, QRectF
+from PyQt6.QtCore import Qt, QRectF, QPropertyAnimation, QEasingCurve
 from PyQt6.QtGui import QColor, QFont, QPainter, QPen, QShortcut, QKeySequence
 from PyQt6.QtWidgets import (
+    QAbstractItemView,
     QApplication,
     QComboBox,
     QDoubleSpinBox,
@@ -198,10 +199,14 @@ class EntryPanel(QGroupBox):
         self.add_button.clicked.connect(self.add_entry)
 
         self.list_widget = QListWidget()
-        self.list_widget.setSpacing(6)
-        self.list_widget.setMinimumHeight(145)
+        self.list_widget.setSpacing(3)
+        self.list_widget.setMinimumHeight(118)
+        self.list_widget.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.list_widget.verticalScrollBar().setSingleStep(12)
 
         form = QGridLayout()
+        form.setHorizontalSpacing(6)
+        form.setVerticalSpacing(5)
         form.addWidget(QLabel("Adet"), 0, 0)
         form.addWidget(QLabel("Uzunluk"), 0, 3)
         form.addWidget(QLabel("Birim"), 0, 6)
@@ -216,6 +221,8 @@ class EntryPanel(QGroupBox):
         form.setColumnStretch(3, 1)
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(7)
         layout.addLayout(form)
         layout.addWidget(self.list_widget)
 
@@ -238,7 +245,7 @@ class EntryPanel(QGroupBox):
         item = QListWidgetItem()
         row = QWidget()
         layout = QHBoxLayout(row)
-        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setContentsMargins(6, 2, 6, 2)
 
         label = QLabel(f"{entry.quantity} adet x {format_length(entry.length_cm)}")
         label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
@@ -267,7 +274,7 @@ class CutBar(QWidget):
         super().__init__()
         self.plan = plan
         self.max_length_cm = max_length_cm
-        self.setMinimumHeight(62)
+        self.setMinimumHeight(46)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
     def paintEvent(self, event):
@@ -275,8 +282,8 @@ class CutBar(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         margin_x = 4
-        y = 14
-        height = 34
+        y = 8
+        height = 28
         full_width = max(120, self.width() - margin_x * 2)
         bar_width = max(70, full_width * self.plan.stock_length_cm / self.max_length_cm)
 
@@ -322,6 +329,25 @@ class CutBar(QWidget):
             x += piece_width
 
 
+class SmoothScrollArea(QScrollArea):
+    def __init__(self):
+        super().__init__()
+        self.scroll_animation = QPropertyAnimation(self.verticalScrollBar(), b"value", self)
+        self.scroll_animation.setDuration(130)
+        self.scroll_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+    def wheelEvent(self, event):
+        bar = self.verticalScrollBar()
+        target = bar.value() - int(event.angleDelta().y() * 0.55)
+        target = max(bar.minimum(), min(bar.maximum(), target))
+
+        self.scroll_animation.stop()
+        self.scroll_animation.setStartValue(bar.value())
+        self.scroll_animation.setEndValue(target)
+        self.scroll_animation.start()
+        event.accept()
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -337,20 +363,27 @@ class MainWindow(QMainWindow):
 
         QShortcut(QKeySequence("Ctrl+Return"), self, self.calculate)
 
-        self.result_area = QScrollArea()
+        self.result_area = SmoothScrollArea()
         self.result_area.setWidgetResizable(True)
+        self.result_area.verticalScrollBar().setSingleStep(14)
+        self.result_area.horizontalScrollBar().setSingleStep(14)
         self.result_content = QWidget()
         self.result_layout = QVBoxLayout(self.result_content)
         self.result_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.result_layout.setContentsMargins(8, 8, 8, 8)
+        self.result_layout.setSpacing(7)
         self.result_area.setWidget(self.result_content)
 
         input_layout = QHBoxLayout()
+        input_layout.setSpacing(10)
         input_layout.addWidget(self.stock_panel)
         input_layout.addWidget(self.demand_panel)
 
         page = QWidget()
         layout = QVBoxLayout(page)
-        title = QLabel("Profil Kesim Planlayıcı")
+        layout.setContentsMargins(14, 10, 14, 12)
+        layout.setSpacing(8)
+        title = QLabel(".") # QLabel("Profil Kesim Planlayıcı")
         title.setObjectName("title")
         subtitle = QLabel("Eldeki profilleri ve ihtiyaç duyulan parçaları girin, sonra kesim planını oluşturun.")
         subtitle.setObjectName("subtitle")
@@ -422,20 +455,20 @@ def apply_style(app):
             color: #20242b;
         }
         QLabel#title {
-            font-size: 30px;
+            font-size: 26px;
             font-weight: 700;
-            margin-top: 6px;
+            margin-top: 2px;
         }
         QLabel#subtitle {
             color: #606874;
-            margin-bottom: 10px;
+            margin-bottom: 4px;
         }
         QGroupBox {
             background: #ffffff;
             border: 1px solid #dfe3ea;
             border-radius: 8px;
-            margin-top: 14px;
-            padding: 16px 12px 12px 12px;
+            margin-top: 10px;
+            padding: 10px 8px 8px 8px;
             font-weight: 700;
         }
         QGroupBox::title {
@@ -447,24 +480,24 @@ def apply_style(app):
             background: #ffffff;
             border: 1px solid #cfd6df;
             border-radius: 7px;
-            min-height: 38px;
-            padding: 3px 8px;
+            min-height: 34px;
+            padding: 2px 8px;
         }
         QPushButton {
             background: #eef1f5;
             border: 1px solid #d5dbe4;
             border-radius: 7px;
-            min-height: 38px;
-            padding: 5px 14px;
+            min-height: 34px;
+            padding: 4px 12px;
             font-weight: 600;
         }
         QPushButton:hover {
             background: #e3e8ef;
         }
         QPushButton#stepButton {
-            min-width: 34px;
-            max-width: 34px;
-            padding: 5px 0;
+            min-width: 32px;
+            max-width: 32px;
+            padding: 4px 0;
             font-size: 18px;
             font-weight: 800;
         }
@@ -472,32 +505,32 @@ def apply_style(app):
             background: #2367d1;
             color: white;
             border: 0;
-            min-height: 48px;
+            min-height: 42px;
             font-size: 17px;
         }
         QListWidget {
             background: #f8fafc;
             border: 1px solid #e0e5ec;
             border-radius: 8px;
-            padding: 6px;
+            padding: 4px;
         }
         QFrame#resultCard {
             background: #ffffff;
             border: 1px solid #dfe3ea;
             border-radius: 8px;
-            padding: 8px;
-            margin-bottom: 8px;
+            padding: 5px;
+            margin-bottom: 5px;
         }
         QLabel#summary {
             font-size: 16px;
             font-weight: 700;
-            margin: 6px 0;
+            margin: 3px 0;
         }
         QLabel#warning {
             background: #fff4d6;
             border: 1px solid #f0d48a;
             border-radius: 8px;
-            padding: 10px;
+            padding: 7px;
             color: #5f4700;
             font-weight: 700;
         }
