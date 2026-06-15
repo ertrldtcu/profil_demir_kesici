@@ -20,27 +20,30 @@ function parseNumber(value) {
   return Number.isFinite(number) ? number : 0;
 }
 
-function toCm(value, unit) {
-  return unit === "cm" ? Math.round(value) : Math.round(value * 100);
+function toMm(value, unit) {
+  if (unit === "mm") return Math.round(value);
+  if (unit === "cm") return Math.round(value * 10);
+  return Math.round(value * 1000);
 }
 
-function formatLength(cm) {
-  if (cm % 100 === 0) return `${cm / 100} m`;
-  return `${(cm / 100).toFixed(2).replace(/0+$/, "").replace(/\.$/, "")} m`;
+function formatLength(mm) {
+  if (mm % 1000 === 0) return `${mm / 1000} m`;
+  if (mm % 10 === 0) return `${mm / 10} cm`;
+  return `${mm} mm`;
 }
 
 function addEntry(target, quantityInput, lengthInput, unitInput) {
   const quantity = Math.max(1, Math.round(parseNumber(quantityInput.value)));
   const length = parseNumber(lengthInput.value);
-  const lengthCm = toCm(length, unitInput.value);
+  const lengthMm = toMm(length, unitInput.value);
 
-  if (!lengthCm || lengthCm <= 0) {
+  if (!lengthMm || lengthMm <= 0) {
     showMessage("Uzunluk 0'dan büyük olmalı.");
     lengthInput.focus();
     return;
   }
 
-  target.push({ quantity, lengthCm });
+  target.push({ quantity, lengthMm });
   quantityInput.value = quantity;
   lengthInput.value = "";
   lengthInput.focus();
@@ -61,7 +64,7 @@ function renderList(container, entries) {
     row.className = "item";
 
     const text = document.createElement("div");
-    text.textContent = `${entry.quantity} adet x ${formatLength(entry.lengthCm)}`;
+    text.textContent = `${entry.quantity} adet x ${formatLength(entry.lengthMm)}`;
 
     const button = document.createElement("button");
     button.className = "delete-button";
@@ -84,11 +87,11 @@ function makeCutPlan(stocks, demands) {
   const remaining = new Map();
 
   stocks.forEach((entry) => {
-    for (let i = 0; i < entry.quantity; i += 1) stockLengths.push(entry.lengthCm);
+    for (let i = 0; i < entry.quantity; i += 1) stockLengths.push(entry.lengthMm);
   });
 
   demands.forEach((entry) => {
-    remaining.set(entry.lengthCm, (remaining.get(entry.lengthCm) || 0) + entry.quantity);
+    remaining.set(entry.lengthMm, (remaining.get(entry.lengthMm) || 0) + entry.quantity);
   });
 
   const unusedStocks = stockLengths.sort((a, b) => b - a);
@@ -116,27 +119,27 @@ function makeCutPlan(stocks, demands) {
 
     if (bestIndex === -1) break;
 
-    const stockLengthCm = unusedStocks.splice(bestIndex, 1)[0];
+    const stockLengthMm = unusedStocks.splice(bestIndex, 1)[0];
     const pieces = bestCombo
       .sort((a, b) => b - a)
-      .map((lengthCm, index) => {
-        remaining.set(lengthCm, remaining.get(lengthCm) - 1);
-        if (remaining.get(lengthCm) <= 0) remaining.delete(lengthCm);
-        return { lengthCm, color: COLORS[index % COLORS.length], cut: false };
+      .map((lengthMm, index) => {
+        remaining.set(lengthMm, remaining.get(lengthMm) - 1);
+        if (remaining.get(lengthMm) <= 0) remaining.delete(lengthMm);
+        return { lengthMm, color: COLORS[index % COLORS.length], cut: false };
       });
 
-    plans.push({ stockLengthCm, pieces });
+    plans.push({ stockLengthMm, pieces });
   }
 
   const missing = [];
-  remaining.forEach((count, lengthCm) => {
+  remaining.forEach((count, lengthMm) => {
     for (let i = 0; i < count; i += 1) {
-      missing.push(lengthCm);
+      missing.push(lengthMm);
     }
   });
 
   return {
-    plans: plans.sort((a, b) => b.stockLengthCm - a.stockLengthCm || wasteOf(b) - wasteOf(a)),
+    plans: plans.sort((a, b) => b.stockLengthMm - a.stockLengthMm || wasteOf(b) - wasteOf(a)),
     missing,
   };
 }
@@ -169,11 +172,11 @@ function findBestCombination(capacity, remaining) {
 }
 
 function usedOf(plan) {
-  return plan.pieces.reduce((total, piece) => total + piece.lengthCm, 0);
+  return plan.pieces.reduce((total, piece) => total + piece.lengthMm, 0);
 }
 
 function wasteOf(plan) {
-  return plan.stockLengthCm - usedOf(plan);
+  return plan.stockLengthMm - usedOf(plan);
 }
 
 function calculate() {
@@ -208,7 +211,7 @@ function renderResults(plans, missing) {
   }
 
   const totalWaste = plans.reduce((total, plan) => total + wasteOf(plan), 0);
-  const maxLength = Math.max(...plans.map((plan) => plan.stockLengthCm));
+  const maxLength = Math.max(...plans.map((plan) => plan.stockLengthMm));
 
   const summary = document.createElement("div");
   summary.className = "summary";
@@ -226,23 +229,23 @@ function createPlanCard(plan, index, maxLength) {
 
   const title = document.createElement("div");
   title.className = "plan-title";
-  title.textContent = `${index}. profil - ${formatLength(plan.stockLengthCm)} | Fire: ${formatLength(wasteOf(plan))}`;
+  title.textContent = `${index}. profil - ${formatLength(plan.stockLengthMm)} | Fire: ${formatLength(wasteOf(plan))}`;
 
   const pieces = document.createElement("div");
   pieces.className = "plan-pieces";
-  pieces.textContent = `Kes: ${plan.pieces.map((piece) => formatLength(piece.lengthCm)).join(" + ")}`;
+  pieces.textContent = `Kes: ${plan.pieces.map((piece) => formatLength(piece.lengthMm)).join(" + ")}`;
 
   const bar = document.createElement("div");
   bar.className = "bar";
-  bar.style.width = `${Math.max(26, (plan.stockLengthCm / maxLength) * 100)}%`;
+  bar.style.width = `${Math.max(26, (plan.stockLengthMm / maxLength) * 100)}%`;
 
   plan.pieces.forEach((piece) => {
     const segment = document.createElement("button");
     segment.type = "button";
     segment.className = "segment";
-    segment.style.width = `${(piece.lengthCm / plan.stockLengthCm) * 100}%`;
+    segment.style.width = `${(piece.lengthMm / plan.stockLengthMm) * 100}%`;
     segment.style.background = piece.color;
-    segment.textContent = formatLength(piece.lengthCm);
+    segment.textContent = formatLength(piece.lengthMm);
     segment.addEventListener("click", () => {
       piece.cut = !piece.cut;
       segment.classList.toggle("cut", piece.cut);
@@ -254,7 +257,7 @@ function createPlanCard(plan, index, maxLength) {
   if (waste > 0) {
     const wasteSegment = document.createElement("div");
     wasteSegment.className = "waste";
-    wasteSegment.style.width = `${(waste / plan.stockLengthCm) * 100}%`;
+    wasteSegment.style.width = `${(waste / plan.stockLengthMm) * 100}%`;
     wasteSegment.textContent = waste >= 50 ? formatLength(waste) : "";
     bar.append(wasteSegment);
   }
