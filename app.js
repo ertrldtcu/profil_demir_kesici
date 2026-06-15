@@ -81,51 +81,91 @@ function renderList(container, entries) {
 
 function makeCutPlan(stocks, demands) {
   const stockLengths = [];
-  const demandLengths = [];
+  const remaining = new Map();
 
   stocks.forEach((entry) => {
     for (let i = 0; i < entry.quantity; i += 1) stockLengths.push(entry.lengthCm);
   });
 
   demands.forEach((entry) => {
-    for (let i = 0; i < entry.quantity; i += 1) demandLengths.push(entry.lengthCm);
+    remaining.set(entry.lengthCm, (remaining.get(entry.lengthCm) || 0) + entry.quantity);
   });
 
-  stockLengths.sort((a, b) => a - b);
-  demandLengths.sort((a, b) => b - a);
+  const unusedStocks = stockLengths.sort((a, b) => b - a);
+  const plans = [];
 
-  const plans = stockLengths.map((lengthCm) => ({ stockLengthCm: lengthCm, pieces: [] }));
-  const missing = [];
-
-  demandLengths.forEach((demand) => {
+  while (hasRemainingDemand(remaining) && unusedStocks.length) {
     let bestIndex = -1;
-    let bestRemaining = Infinity;
+    let bestCombo = [];
+    let bestWaste = Infinity;
+    let bestUsed = 0;
 
-    plans.forEach((plan, index) => {
-      const used = plan.pieces.reduce((total, piece) => total + piece.lengthCm, 0);
-      const remaining = plan.stockLengthCm - used;
+    unusedStocks.forEach((stockLength, index) => {
+      const combo = findBestCombination(stockLength, remaining);
+      const used = combo.reduce((total, length) => total + length, 0);
+      if (!used) return;
 
-      if (remaining >= demand && remaining - demand < bestRemaining) {
+      const waste = stockLength - used;
+      if (waste < bestWaste || (waste === bestWaste && used > bestUsed)) {
         bestIndex = index;
-        bestRemaining = remaining - demand;
+        bestCombo = combo;
+        bestWaste = waste;
+        bestUsed = used;
       }
     });
 
-    if (bestIndex === -1) {
-      missing.push(demand);
-      return;
-    }
+    if (bestIndex === -1) break;
 
-    const color = COLORS[plans[bestIndex].pieces.length % COLORS.length];
-    plans[bestIndex].pieces.push({ lengthCm: demand, color, cut: false });
+    const stockLengthCm = unusedStocks.splice(bestIndex, 1)[0];
+    const pieces = bestCombo
+      .sort((a, b) => b - a)
+      .map((lengthCm, index) => {
+        remaining.set(lengthCm, remaining.get(lengthCm) - 1);
+        if (remaining.get(lengthCm) <= 0) remaining.delete(lengthCm);
+        return { lengthCm, color: COLORS[index % COLORS.length], cut: false };
+      });
+
+    plans.push({ stockLengthCm, pieces });
+  }
+
+  const missing = [];
+  remaining.forEach((count, lengthCm) => {
+    for (let i = 0; i < count; i += 1) {
+      missing.push(lengthCm);
+    }
   });
 
   return {
-    plans: plans
-      .filter((plan) => plan.pieces.length)
-      .sort((a, b) => b.stockLengthCm - a.stockLengthCm || wasteOf(b) - wasteOf(a)),
+    plans: plans.sort((a, b) => b.stockLengthCm - a.stockLengthCm || wasteOf(b) - wasteOf(a)),
     missing,
   };
+}
+
+function hasRemainingDemand(remaining) {
+  return remaining.size > 0;
+}
+
+function findBestCombination(capacity, remaining) {
+  const lengths = [...remaining.keys()].sort((a, b) => b - a);
+  const dp = Array(capacity + 1).fill(null);
+  dp[0] = [];
+
+  lengths.forEach((length) => {
+    const count = remaining.get(length);
+    for (let copy = 0; copy < count; copy += 1) {
+      for (let used = capacity - length; used >= 0; used -= 1) {
+        if (dp[used] && !dp[used + length]) {
+          dp[used + length] = [...dp[used], length];
+        }
+      }
+    }
+  });
+
+  for (let used = capacity; used > 0; used -= 1) {
+    if (dp[used]) return dp[used];
+  }
+
+  return [];
 }
 
 function usedOf(plan) {
