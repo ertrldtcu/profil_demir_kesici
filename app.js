@@ -12,6 +12,7 @@ const COLORS = [
 const stockEntries = [];
 const demandEntries = [];
 let lastPlanText = "";
+let hasCalculated = false;
 
 const $ = (id) => document.getElementById(id);
 
@@ -49,7 +50,7 @@ function addEntry(target, quantityInput, lengthInput, unitInput) {
   lengthInput.value = "";
   lengthInput.focus();
   renderLists();
-  hideMessage();
+  refreshPlan();
 }
 
 function renderLists() {
@@ -77,7 +78,7 @@ function renderList(container, entries) {
       if (entry.quantity <= 1) return;
       entry.quantity -= 1;
       renderLists();
-      clearResults();
+      refreshPlan();
     });
 
     const increase = document.createElement("button");
@@ -88,7 +89,7 @@ function renderList(container, entries) {
     increase.addEventListener("click", () => {
       entry.quantity += 1;
       renderLists();
-      clearResults();
+      refreshPlan();
     });
 
     const button = document.createElement("button");
@@ -99,7 +100,7 @@ function renderList(container, entries) {
     button.addEventListener("click", () => {
       entries.splice(index, 1);
       renderLists();
-      clearResults();
+      refreshPlan();
     });
 
     row.append(text, decrease, increase, button);
@@ -208,7 +209,24 @@ function wasteOf(plan) {
 }
 
 function calculate() {
+  hasCalculated = true;
   if (!stockEntries.length || !demandEntries.length) {
+    resetResults();
+    showMessage("Eldeki profiller ve istenen kesimler listesine en az birer satır ekleyin.");
+    return;
+  }
+
+  refreshPlan();
+}
+
+function refreshPlan() {
+  if (!hasCalculated) {
+    hideMessage();
+    return;
+  }
+
+  if (!stockEntries.length || !demandEntries.length) {
+    resetResults();
     showMessage("Eldeki profiller ve istenen kesimler listesine en az birer satır ekleyin.");
     return;
   }
@@ -300,7 +318,7 @@ function hideMessage() {
   $("message").hidden = true;
 }
 
-function clearResults() {
+function resetResults() {
   $("summary").className = "summary-grid empty-state";
   $("summary").textContent = "Henüz hesaplama yapılmadı.";
   $("results").className = "results empty-state";
@@ -396,7 +414,8 @@ function fillSampleData() {
   );
 
   renderLists();
-  clearResults();
+  hasCalculated = true;
+  refreshPlan();
   showMessage("Orta karmaşıklıkta örnek veriler eklendi.");
 }
 
@@ -442,7 +461,7 @@ function bindEvents() {
   $("copyButton").addEventListener("click", copyPlan);
 
   document.querySelectorAll('input[name="optMode"]').forEach((input) => {
-    input.addEventListener("change", clearResults);
+    input.addEventListener("change", refreshPlan);
   });
 
   document.querySelectorAll("[data-step-for]").forEach((button) => {
